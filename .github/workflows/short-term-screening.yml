@@ -1,0 +1,73 @@
+name: A股短线选股
+
+on:
+  schedule:
+    # 周一至周五，北京时间16:15；避开整点，仍可能排队延迟。
+    - cron: '15 8 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      force_run:
+        description: 非交易日测试最近收盘数据（仍检查数据日期）
+        type: boolean
+        default: false
+      dry_run:
+        description: 生成报告但不推送微信（仍调用AI）
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: short-term-screening
+  cancel-in-progress: false
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: 安装现有项目依赖
+        run: pip install -r requirements.txt
+      - name: 筛选、核验并推送
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL || secrets.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || secrets.OPENAI_MODEL }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          # 仅推送给当前Token对应账号，不导入群组配置。
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          TAVILY_API_KEYS: ${{ secrets.TAVILY_API_KEYS }}
+          BOCHA_API_KEYS: ${{ secrets.BOCHA_API_KEYS }}
+          SCREENING_ENABLED: 'true'
+          SCREENING_DATA_DIR: data/short_term_screening
+          SCREENING_FALLBACK_SNAPSHOT_PATH: 'off'
+          SCREENING_SNAPSHOT_CACHE_TTL_SEC: '0'
+          SCREENING_DAILY_HISTORY_CACHE_TTL_HOURS: '0'
+          DAILY_ENRICH_MAX_CANDIDATES: '30'
+          DAILY_FETCH_MAX_WORKERS: '2'
+          DAILY_FETCH_RETRIES: '1'
+          SCREENING_SNAPSHOT_CALL_TIMEOUT_SEC: '60'
+          SCREENING_DAILY_CALL_TIMEOUT_SEC: '20'
+          RISK_VETO_HIGH: 'true'
+          FORCE_RUN: ${{ inputs.force_run }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          TZ: Asia/Shanghai
+        run: |
+          args=()
+          if [ "$FORCE_RUN" = "true" ]; then args+=(--force-run); fi
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          python scripts/run_short_term_screening.py "${args[@]}"
+      - name: 保存候选与数据核验报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: short-term-screening-${{ github.run_id }}
+          path: reports/short_term/
+          if-no-files-found: warn
+          retention-days: 14

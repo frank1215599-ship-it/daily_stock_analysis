@@ -80,6 +80,7 @@ def test_bundled_strategies_are_loaded_from_the_internal_package() -> None:
         "oversold_reversal",
         "quality_value",
         "shrink_pullback",
+        "short_term_watch",
         "volume_breakout",
     }
     assert strategies["dual_low"].screening.factor_weights["value"] < 0.40
