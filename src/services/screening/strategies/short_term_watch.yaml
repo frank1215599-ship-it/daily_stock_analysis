@@ -1,0 +1,62 @@
+# Strategy schema derived from the bundled screening engine.
+# Derived from AlphaSift revision 9f522747caafd3c0b1ddb7e14d5cf44c8580b6cf.
+# The short-term thresholds and ranking instructions below are DSA-specific.
+name: short_term_watch
+display_name: 短线量价观察
+description: 面向约2至10个交易日的收盘后候选筛选，允许空名单，未经收益回测验证
+version: "1.0"
+category: trend
+tags: [short_term, volume, trend]
+analysis_skills: [volume_breakout]
+style:
+  risk_profile: aggressive
+  holding_period: short_term
+  execution_style: conditional_breakout
+  market_regime: [trend, rotation]
+  capital_profile: high_liquidity
+  ui_badge: 短线
+screening:
+  enabled: true
+  market_scope: [cn]
+  hard_filters:
+    exclude_st: true
+    price_min: 3
+    amount_min: 300000000
+    market_cap_min: 3000000000
+    pe_ttm_min: 0.01
+    pb_min: 0.01
+    turnover_rate_min: 2
+    volume_ratio_min: 1.2
+    change_pct_min: 1
+    change_pct_max: 7
+    require_price_above_ma20: true
+    signal_score_min: 60
+    macd_status_whitelist: [bullish, neutral]
+    breakout_20d_pct_min: -3
+    breakout_20d_pct_max: 4
+    volume_ratio_20d_min: 1.2
+    volume_ratio_20d_max: 4
+    range_20d_pct_max: 30
+    atr_20_pct_max: 6
+  tech_weight: 0.6
+  factor_weights:
+    momentum: 0.25
+    activity: 0.25
+    liquidity: 0.25
+    stability: 0.25
+  risk_profile:
+    chase_change_pct: 7
+    abnormal_volume_ratio: 5
+    high_turnover_rate: 15
+    low_llm_confidence: 0.5
+  portfolio_profile:
+    max_same_bucket: 1
+    concentration_penalty: 5
+  ranking_hints: |
+    这是收盘后为未来约2至10个交易日生成的短线观察名单，不是立即买入指令。
+    仅根据已提供行情、财务和有出处的资讯推理；缺失公告或新闻应明确写未核验。
+    必须区分观察、条件满足后考虑、放弃；不要推荐涨停追单。
+    在llm_watch_items写下一交易日需要确认的量价条件，在llm_invalidators写失效条件。
+    不得编造精确买卖价、收益率、胜率或不存在的事件。无充分依据时降低评级。
+    注意A股T+1，新买股份不能当日卖出，跌停时止损单也未必能成交。
+  max_output: 5
