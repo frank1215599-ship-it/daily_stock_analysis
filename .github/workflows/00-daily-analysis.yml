@@ -1,9 +1,9 @@
 name: 每日股票分析
 
 on:
-  # 定时触发 - 每天北京时间 18:00 (UTC 10:00)
+  # 定时触发 - 北京时间 10:00 (UTC 02:00)
   schedule:
-    - cron: '0 2 * * 1-5'     # 周一到周五，UTC 10:00 = 北京时间 18:00
+    - cron: '0 2 * * 1-5'     # 周一到周五北京时间10:00
   
   # 手动触发
   workflow_dispatch:
@@ -22,6 +22,10 @@ on:
         required: false
         default: false
         type: boolean
+
+permissions:
+  contents: read
+  actions: read
 
 # 并发控制：同一时间只运行一个分析任务
 concurrency:
@@ -60,6 +64,12 @@ jobs:
         run: |
           mkdir -p data logs reports
       
+      - name: 导入最近交易日短线候选
+        if: ${{ github.event.inputs.mode != 'market-only' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/import_screening_watchlist.py
+
       - name: 执行股票分析
         env:
           # ==========================================
@@ -437,6 +447,9 @@ jobs:
           elif [ -z "${STOCK_LIST:-}" ]; then
             export STOCK_LIST="600519"
           fi
+
+          # 合并短线候选；保留原配置，不写入Secrets或Variables。
+          export STOCK_LIST="$(python scripts/import_screening_watchlist.py --merge)"
 
           # 处理 LITELLM YAML 配置文件
           if [ -n "$LITELLM_CONFIG_YAML" ] && [ -n "$LITELLM_CONFIG" ]; then
