@@ -599,6 +599,14 @@ def _extract_completion_text(response: object) -> str:
     except (AttributeError, IndexError, KeyError, TypeError):
         return ""
 
+    finish_reason = choice.get("finish_reason") if isinstance(choice, dict) else getattr(choice, "finish_reason", None)
+    usage = response.get("usage") if isinstance(response, dict) else getattr(response, "usage", None)
+    completion_tokens = usage.get("completion_tokens") if isinstance(usage, dict) else getattr(usage, "completion_tokens", None)
+    # Metadata only: never log response text, reasoning content or credentials.
+    logger.info("LLM ranking response: finish_reason=%s completion_tokens=%s", finish_reason, completion_tokens)
+    if finish_reason == "length":
+        logger.warning("LLM ranking output reached its token limit; structured JSON may be incomplete")
+
     def field(name: str) -> object:
         if isinstance(message, dict):
             return message.get(name)
