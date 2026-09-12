@@ -1499,17 +1499,16 @@ class NotificationService(
                     # 狙击点位
                     sniper = battle.get('sniper_points', {})
                     if sniper:
-                        report_lines.extend([
-                            f"**📍 {labels['action_points_heading']}**",
-                            "",
-                            f"| {labels['action_points_heading']} | {labels['current_price_label']} |",
-                            "|---------|------|",
-                            f"| 🎯 {labels['ideal_buy_label']} | {self._clean_sniper_value(sniper.get('ideal_buy', 'N/A'))} |",
-                            f"| 🔵 {labels['secondary_buy_label']} | {self._clean_sniper_value(sniper.get('secondary_buy', 'N/A'))} |",
-                            f"| 🛑 {labels['stop_loss_label']} | {self._clean_sniper_value(sniper.get('stop_loss', 'N/A'))} |",
-                            f"| 🎊 {labels['take_profit_label']} | {self._clean_sniper_value(sniper.get('take_profit', 'N/A'))} |",
-                            "",
-                        ])
+                        report_lines.append(f"**📍 {labels['action_points_heading']}**")
+                        report_lines.append("")
+                        for key, label_key in (
+                            ('ideal_buy', 'ideal_buy_label'),
+                            ('secondary_buy', 'secondary_buy_label'),
+                            ('stop_loss', 'stop_loss_label'),
+                            ('take_profit', 'take_profit_label'),
+                        ):
+                            value = self._clean_sniper_value(sniper.get(key, 'N/A'))
+                            report_lines.extend([f"- **{labels[label_key]}**：{value}", ""])
                     # 仓位策略
                     position = battle.get('position_strategy', {})
                     if position:
@@ -2052,17 +2051,13 @@ class NotificationService(
         # 狙击点位
         sniper = battle.get('sniper_points', {}) if battle else {}
         if sniper:
-            lines.extend([
-                f"### 🎯 {labels['action_points_heading']}",
-                "",
-                f"| {labels['ideal_buy_label']} | {labels['stop_loss_label']} | {labels['take_profit_label']} |",
-                "|------|------|------|",
-            ])
-            ideal_buy = sniper.get('ideal_buy', '-')
-            stop_loss = sniper.get('stop_loss', '-')
-            take_profit = sniper.get('take_profit', '-')
-            lines.append(f"| {ideal_buy} | {stop_loss} | {take_profit} |")
-            lines.append("")
+            lines.extend([f"### 🎯 {labels['action_points_heading']}", ""])
+            for key, label_key in (
+                ('ideal_buy', 'ideal_buy_label'),
+                ('stop_loss', 'stop_loss_label'),
+                ('take_profit', 'take_profit_label'),
+            ):
+                lines.extend([f"- **{labels[label_key]}**：{sniper.get(key, '-')}", ""])
 
         # ========== 信号归因分析 ==========
         signal_attr = dashboard.get('signal_attribution', {}) if dashboard else {}
