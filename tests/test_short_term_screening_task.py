@@ -130,6 +130,17 @@ class ShortTermTaskTests(unittest.TestCase):
         self.assertNotIn("<script>", report)
         self.assertNotIn("[click]", report)
 
+    def test_ranking_diagnostics_keep_response_text_private(self):
+        from src.services.screening.ranker import _extract_completion_text
+        response = {"choices": [{"finish_reason": "length", "message": {
+            "content": "", "reasoning_content": "PRIVATE_REASONING"}}],
+            "usage": {"completion_tokens": 2048}}
+        with self.assertLogs("src.services.screening.ranker", level="INFO") as logs:
+            self.assertEqual(_extract_completion_text(response), "")
+        self.assertIn("finish_reason=length", " ".join(logs.output))
+        self.assertIn("completion_tokens=2048", " ".join(logs.output))
+        self.assertNotIn("PRIVATE_REASONING", " ".join(logs.output))
+
     def test_workflow_uses_existing_secrets_and_separate_schedule(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/short-term-screening.yml").read_text())
         trigger = workflow.get("on", workflow.get(True))

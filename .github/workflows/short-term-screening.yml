@@ -45,6 +45,8 @@ jobs:
           TAVILY_API_KEYS: ${{ secrets.TAVILY_API_KEYS }}
           BOCHA_API_KEYS: ${{ secrets.BOCHA_API_KEYS }}
           SCREENING_ENABLED: 'true'
+          LLM_MAX_TOKENS: '8192'
+          LLM_TIMEOUT_SEC: '120'
           SCREENING_DATA_DIR: data/short_term_screening
           SCREENING_FALLBACK_SNAPSHOT_PATH: 'off'
           SCREENING_SNAPSHOT_CACHE_TTL_SEC: '0'

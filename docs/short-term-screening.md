@@ -40,6 +40,8 @@
 
 ## 验证及回滚
 
+短线工作流将 `LLM_MAX_TOKENS` 设为 8192、`LLM_TIMEOUT_SEC` 设为 120，给多股结构化输出更多空间；更高上限可能增加实际输出费用。首次在线运行出现 `no_json_found` / `empty_response`，但没有记录结束原因，尚不能证明输出被截断。更新后日志只记录 `finish_reason` 和 `completion_tokens`，不记录模型正文或推理内容。该调整仍需真实运行验证；无法解析的结果继续标记不可用，不转成买入候选。
+
 ```bash
 python -m unittest discover -s tests -p test_short_term_screening_task.py -v
 python -m py_compile scripts/run_short_term_screening.py
