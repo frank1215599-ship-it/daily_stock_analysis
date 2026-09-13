@@ -202,6 +202,9 @@ def apply_phase_decision_guardrails(
             [_adjustment_limitation_text(item, language=language) for item in adjustments],
         )
 
+    from src.report_plan_guardrail import enforce_report_plan
+
+    enforce_report_plan(result, phase_summary, overview, language)
     return adjustments
 
 
