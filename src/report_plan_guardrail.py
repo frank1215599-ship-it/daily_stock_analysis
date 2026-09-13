@@ -77,7 +77,10 @@ def enforce_report_plan(result, phase_summary, overview, language):
     if blocked or not valid:
         reason = ('交易价位未通过一致性校验，等待重新评估。' if not valid
                   else '入场条件尚未核实，当前仅观察，不据此新增仓位。')
-        if getattr(result, 'decision_type', 'hold') == 'buy':
+        # An explicitly unresolved action is a fail-closed contract: do not
+        # manufacture a resolved watch signal for persistence/downstream APIs.
+        unresolved = hasattr(result, 'action') and result.action is None
+        if getattr(result, 'decision_type', 'hold') == 'buy' and not unresolved:
             result.decision_type = 'hold'
             result.operation_advice = '观望'
             result.action = 'watch'

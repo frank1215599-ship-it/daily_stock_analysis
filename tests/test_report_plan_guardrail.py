@@ -67,6 +67,15 @@ class ReportPlanTests(unittest.TestCase):
         self.assertIn('一致性校验', r.dashboard['core_conclusion']['one_sentence'])
         self.assertIn('一致性校验', r.dashboard['core_conclusion']['position_advice']['no_position'])
 
+    def test_unresolved_action_stays_unresolved_when_plan_is_rejected(self):
+        r = self.result(stop='29元')
+        r.decision_type = 'buy'
+        r.action = None
+        self.apply(r)
+        self.assertIsNone(r.action)
+        self.assertEqual(r.decision_type, 'buy')
+        self.assertIn('撤回', r.dashboard['battle_plan']['position_strategy']['entry_plan'])
+
     def test_indicator_numbers_do_not_become_prices(self):
         self.assertEqual(_single_price('17.36元（MA5，-5%）'), 17.36)
 
