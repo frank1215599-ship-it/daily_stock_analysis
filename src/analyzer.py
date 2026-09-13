@@ -4305,6 +4305,8 @@ class GeminiAnalyzer:
                 context['trend_analysis'],
                 volume_change_ratio=context.get('volume_change_ratio'),
             )
+            from src.fear_greed import render_fear_greed
+            prompt += '\n' + render_fear_greed(trend.get('fear_greed')) + '\n'
             consistency_notes = trend.get('prompt_consistency_notes', [])
             if use_legacy_default_prompt:
                 bias_warning = "🚨 超过5%，严禁追高！" if trend.get('bias_ma5', 0) > 5 else "✅ 安全范围"

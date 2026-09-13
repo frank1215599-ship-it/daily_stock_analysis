@@ -1487,6 +1487,10 @@ class NotificationService(
                                 "",
                             ])
 
+                from src.fear_greed import render_fear_greed
+                fgi_text = render_fear_greed(dashboard.get("fear_greed"), report_language)
+                if fgi_text:
+                    report_lines.extend([fgi_text, ""])
                 self._append_phase_decision_block(report_lines, dashboard, labels)
 
                 # ========== 作战计划 ==========
@@ -1991,6 +1995,10 @@ class NotificationService(
             lines.extend([excerpt, ""])
 
         self._append_market_snapshot(lines, result)
+        from src.fear_greed import render_fear_greed
+        fgi_text = render_fear_greed(dashboard.get("fear_greed"), report_language)
+        if fgi_text:
+            lines.extend([fgi_text, ""])
 
         # 核心决策（一句话）
         one_sentence = core.get('one_sentence', result.analysis_summary) if core else result.analysis_summary

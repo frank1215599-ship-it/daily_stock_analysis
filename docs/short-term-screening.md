@@ -80,3 +80,13 @@ SCREENING_ENABLED=true python scripts/run_short_term_screening.py --dry-run
 - 完整与单股报告的操作价位改为可换行列表，减少手机与 PDF 横向截断。
 
 无需新增配置。不会更改选股条件、自动任务时间或下单。回滚时整体撤销本次报告校验改动即可。
+
+## Fear And Greed Indicator [CC]
+
+每日分析内置日线 FGI，无需额外密钥。基于用户提供的 cheatcountry MIT Pine v4 源码，参数固定 10/30/2。将上涨日真实波幅计入 up、下跌日计入 down、平盘记零，计算 `WMA2(WMA10(up)-WMA10(down)-WMA30(up)+WMA30(down))`。真实波幅包含与前收盘的跳空距离。
+
+只支持图表周期与指标周期均为日线的默认 `rep=false` 语义：忽略输入最后一根价格柱，报告明确区分 source_bar_date 和 display_bar_date。即使最后一根已经收盘也保持一根延迟，与原脚本默认时间对齐；不会自动切换到最新已收盘值。最后一根为盘中行情叠加时同样不参与计算。至少需要35根日线；缺失、重复日期、非法OHLC时标记不可用，不以零值冒充中性。日线复权方式、行情供应商和历史长度应与 TradingView 一致；尚未用 TradingView 导出数值逐点对照。跨周期 security、分钟确认和实时重绘不在此实现范围。
+
+绿柱/红柱是持续状态，上穿/下穿才是新事件（零到正、零到负也算）；显示日期不是新推送时间。该数值具有价格量纲，不能跨股票直接排名，不是CNN恐贪指数、胜率或独立买卖指令。指标追加到传统与Agent分析事实和完整/单股Markdown报告，不更改选股评分、仓位、执行条件或自动下单。它不能补齐新闻、筹码、财报或盘中确认数据。
+
+中文专题新增，无对应英文专题文件。版权与MIT许可见 `docs/licenses/fear-greed-MIT.txt`。

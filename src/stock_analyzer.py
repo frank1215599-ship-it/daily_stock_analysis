@@ -24,6 +24,7 @@ from enum import Enum
 import pandas as pd
 import numpy as np
 
+from src.fear_greed import calculate_fear_greed
 from src.config import get_config
 from src.schemas.decision_scale import signal_key_for_score
 
@@ -127,6 +128,8 @@ class TrendAnalysisResult:
     rsi_status: RSIStatus = RSIStatus.NEUTRAL
     rsi_signal: str = ""              # RSI 信号描述
 
+    fear_greed: Dict[str, Any] = field(default_factory=dict)
+
     # 买入信号
     buy_signal: BuySignal = BuySignal.WAIT
     signal_score: int = 0            # 综合评分 0-100
@@ -166,6 +169,7 @@ class TrendAnalysisResult:
             'rsi_24': self.rsi_24,
             'rsi_status': self.rsi_status.value,
             'rsi_signal': self.rsi_signal,
+            'fear_greed': self.fear_greed,
         }
 
 
@@ -215,6 +219,7 @@ class StockTrendAnalyzer:
             TrendAnalysisResult 分析结果
         """
         result = TrendAnalysisResult(code=code)
+        result.fear_greed = calculate_fear_greed(df)
         
         if df is None or df.empty or len(df) < 20:
             logger.warning(f"{code} 数据不足，无法进行趋势分析")
