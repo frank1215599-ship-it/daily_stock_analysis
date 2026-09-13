@@ -901,6 +901,8 @@ class StockAnalysisPipeline:
 
             # Step 7.7: price_position fallback
             if result:
+                from src.fear_greed import attach_fear_greed
+                attach_fear_greed(result, trend_result)
                 fill_price_position_if_needed(result, trend_result, realtime_quote)
                 action_source_advice = getattr(result, "operation_advice", None)
                 stabilize_decision_with_structure(result, trend_result, fundamental_context)
@@ -1083,6 +1085,7 @@ class StockAnalysisPipeline:
         # 添加趋势分析结果
         if trend_result:
             enhanced['trend_analysis'] = {
+                'fear_greed': trend_result.fear_greed,
                 'trend_status': trend_result.trend_status.value,
                 'ma_alignment': trend_result.ma_alignment,
                 'trend_strength': trend_result.trend_strength,
@@ -1708,6 +1711,8 @@ class StockAnalysisPipeline:
                     getattr(result, "action", None)
                 )
                 action_chain_valid = pipeline_start_action is not None
+                from src.fear_greed import attach_fear_greed
+                attach_fear_greed(result, trend_result)
                 fill_price_position_if_needed(result, trend_result, realtime_quote)
                 realtime_data = initial_context.get("realtime_quote", {})
                 if isinstance(realtime_data, dict):
