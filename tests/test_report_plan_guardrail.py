@@ -58,6 +58,15 @@ class ReportPlanTests(unittest.TestCase):
         self.apply(r)
         self.assertIn('撤回', r.dashboard['battle_plan']['position_strategy']['entry_plan'])
 
+    def test_invalid_buy_is_downgraded_in_summary_and_action(self):
+        r = self.result(stop='29元', secondary='27.29元')
+        r.decision_type = 'buy'
+        self.apply(r)
+        self.assertEqual(r.decision_type, 'hold')
+        self.assertEqual(r.action, 'watch')
+        self.assertIn('一致性校验', r.dashboard['core_conclusion']['one_sentence'])
+        self.assertIn('一致性校验', r.dashboard['core_conclusion']['position_advice']['no_position'])
+
     def test_indicator_numbers_do_not_become_prices(self):
         self.assertEqual(_single_price('17.36元（MA5，-5%）'), 17.36)
 

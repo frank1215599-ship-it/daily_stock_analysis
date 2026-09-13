@@ -74,6 +74,29 @@ def enforce_report_plan(result, phase_summary, overview, language):
         or any(w in str(pd.get('immediate_action', '')) for w in ('等待', '观察', '禁止'))
     )
     status = '未触发：仅为条件预案，不新增仓位。' if blocked else '候选预案：仍需核对实时触发条件，并非自动下单。'
+    if blocked or not valid:
+        reason = ('交易价位未通过一致性校验，等待重新评估。' if not valid
+                  else '入场条件尚未核实，当前仅观察，不据此新增仓位。')
+        if getattr(result, 'decision_type', 'hold') == 'buy':
+            result.decision_type = 'hold'
+            result.operation_advice = '观望'
+            result.action = 'watch'
+            result.guardrail_reason = reason
+            result.analysis_summary = reason
+            if isinstance(core, dict):
+                core['one_sentence'] = reason
+                core['signal_type'] = '🟡持有观望'
+        if isinstance(core, dict):
+            position_advice = core.setdefault('position_advice', {})
+            if isinstance(position_advice, dict):
+                position_advice['no_position'] = reason
+        if getattr(result, 'decision_type', 'hold') != 'sell':
+            pd['immediate_action'] = reason
+            if isinstance(core, dict):
+                core['one_sentence'] = reason
+                advice = core.get('position_advice')
+                if isinstance(advice, dict):
+                    advice['has_position'] = '不根据本预案加仓；核对已有仓位、可卖数量和风险预算后重新评估。'
     risk = ('未提供账户资金、已有持仓及可卖数量，不给固定仓位或账户风险百分比。'
             '参考退出价不保证成交；A股新买股份不能当日卖出，跳空、跌停可能扩大实际亏损。')
     if not valid:
