@@ -71,6 +71,8 @@ class PushplusSender:
         if title is None:
             date_str = datetime.now().strftime('%Y-%m-%d')
             title = f"📈 股票分析报告 - {date_str}"
+            if content.startswith("# A股短线选股｜"):
+                title = content.splitlines()[0].removeprefix("# ")[:80]
         sanitized_content = strip_hidden_markdown_metadata(content).strip()
 
         try:

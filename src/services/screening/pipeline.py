@@ -44,6 +44,39 @@ from src.services.screening.strategy import load_all_strategies
 logger = logging.getLogger(__name__)
 
 
+
+def _enrich_short_term_batches(provisional, *, screening, target, limit, **kwargs):
+    """Bound network work, continuing beyond the first rejected shortlist."""
+    from collections import Counter
+    frames = []
+    attempted = 0
+    attrs = {"daily_errors": [], "daily_source_order_notes": [], "daily_source_health": {}}
+    source_counts, quality_counts = Counter(), Counter()
+    successes = 0
+    combined = provisional.iloc[:0].copy()
+    limit = min(limit, 90)
+    for offset in range(0, min(limit, len(provisional)), 30):
+        batch = provisional.iloc[offset:min(offset + 30, limit)]
+        frame = enrich_daily_features(batch, max_rows=len(batch), **kwargs)
+        attempted += len(batch)
+        successes += int(frame.attrs.get("daily_success_count", len(frame)))
+        source_counts.update(frame.attrs.get("daily_source_counts", {}))
+        quality_counts.update(frame.attrs.get("daily_quality_flag_counts", {}))
+        for key in ("daily_errors", "daily_source_order_notes"):
+            attrs[key].extend(frame.attrs.get(key, []))
+        attrs["daily_source_health"].update(frame.attrs.get("daily_source_health", {}))
+        clean = frame.copy()
+        clean.attrs = {}
+        frames.append(clean)
+        combined = pd.concat(frames)
+        if len(apply_hard_filters(combined, screening.hard_filters)) >= target:
+            break
+    combined.attrs = {**attrs, "daily_success_count": successes,
+                      "daily_source_counts": dict(source_counts),
+                      "daily_quality_flag_counts": dict(quality_counts)}
+    return combined, attempted
+
+
 def screen(
     strategy: str,
     *,
@@ -228,9 +261,7 @@ def screen(
         enrich_count = min(daily_limit, len(provisional))
         daily_candidates = provisional.head(enrich_count)
         try:
-            enriched = enrich_daily_features(
-                daily_candidates,
-                max_rows=enrich_count,
+            daily_kwargs = dict(
                 lookback_days=config.daily_lookback_days,
                 source=config.daily_source,
                 fetch_retries=config.daily_fetch_retries,
@@ -239,6 +270,12 @@ def screen(
                 max_workers=config.daily_fetch_max_workers,
                 history_fetcher=daily_history_fetcher,
             )
+            if strat.name == "short_term_watch":
+                enriched, enrich_count = _enrich_short_term_batches(
+                    provisional, screening=screening, target=output_count,
+                    limit=enrich_count, **daily_kwargs)
+            else:
+                enriched = enrich_daily_features(daily_candidates, max_rows=enrich_count, **daily_kwargs)
             daily_enriched = True
             daily_errors = [str(item) for item in enriched.attrs.get("daily_errors", [])]
             daily_enrich_count = int(enriched.attrs.get("daily_success_count", len(enriched)))
