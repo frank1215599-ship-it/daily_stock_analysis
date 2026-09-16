@@ -25,7 +25,7 @@ concurrency:
 jobs:
   screen:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -51,7 +51,7 @@ jobs:
           SCREENING_FALLBACK_SNAPSHOT_PATH: 'off'
           SCREENING_SNAPSHOT_CACHE_TTL_SEC: '0'
           SCREENING_DAILY_HISTORY_CACHE_TTL_HOURS: '0'
-          DAILY_ENRICH_MAX_CANDIDATES: '30'
+          DAILY_ENRICH_MAX_CANDIDATES: '90'
           DAILY_FETCH_MAX_WORKERS: '2'
           DAILY_FETCH_RETRIES: '1'
           SCREENING_SNAPSHOT_CALL_TIMEOUT_SEC: '60'

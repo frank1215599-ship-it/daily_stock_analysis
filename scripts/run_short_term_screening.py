@@ -30,36 +30,43 @@ def text(value, limit=400):
     return re.sub(r"([\\`*\[\]_|])", r"\\\1", result)
 
 
+class HistoryValidationError(ValueError):
+    """Only controlled diagnostics may be shown in a report."""
+
+
 def validate_history(frame, candidate, expected_date):
     """Fail closed on stale dates, suspension, broken OHLC or price mismatch."""
     import pandas as pd
 
     required = {"date", "close", "high", "low", "volume"}
     if frame is None or not required.issubset(frame.columns):
-        raise ValueError("缺少可验证的日K字段")
+        raise HistoryValidationError("缺少可验证的日K字段")
     if frame.attrs.get("daily_stale"):
-        raise ValueError("日K来自过期缓存")
+        raise HistoryValidationError("日K来自过期缓存")
     data = frame.copy()
     data["date"] = pd.to_datetime(data["date"].astype(str), errors="coerce")
     if data["date"].isna().any() or data["date"].duplicated().any():
-        raise ValueError("日K日期异常")
+        raise HistoryValidationError("日K日期异常")
     data = data.sort_values("date")
-    if len(data) < 60 or data.iloc[-1]["date"].date() != expected_date:
-        raise ValueError("不足60根日K或最后交易日不符")
+    if len(data) < 60:
+        raise HistoryValidationError(f"日K仅{len(data)}根，至少需要60根")
+    actual_date = data.iloc[-1]["date"].date()
+    if actual_date != expected_date:
+        raise HistoryValidationError(f"日K末日{actual_date}，预期{expected_date}")
     for column in required - {"date"}:
         data[column] = pd.to_numeric(data[column], errors="coerce")
     recent = data.tail(60)
     values = recent[["close", "high", "low", "volume"]]
     if not values.apply(lambda column: column.map(lambda value: number(value) is not None)).all().all():
-        raise ValueError("日K包含无效数值")
+        raise HistoryValidationError("日K包含无效数值")
     if (values <= 0).any().any():
-        raise ValueError("近期日K包含零成交量或无效价格")
+        raise HistoryValidationError("近期日K包含零成交量或无效价格")
     if ((recent["low"] > recent["close"]) | (recent["high"] < recent["close"])).any():
-        raise ValueError("日K高低价关系异常")
+        raise HistoryValidationError("日K高低价关系异常")
     last = recent.iloc[-1]
     price = number(candidate.get("price"))
     if price is None or price <= 0 or abs(price / last["close"] - 1) > 0.005:
-        raise ValueError("快照价格与目标日期日K不一致")
+        raise HistoryValidationError(f"快照价{price}，日K收盘价{last['close']:.4f}，价格缺失或偏差超过0.5%")
     return {
         "data_date": expected_date.isoformat(),
         "close": round(float(last["close"]), 3),
@@ -69,7 +76,54 @@ def validate_history(frame, candidate, expected_date):
     }
 
 
-def assess(payload, expected_date, fetch_history):
+def fetch_alternative_history(code, *, source, lookback_days=120):
+    from src.services.screening.daily import fetch_daily_history
+    frame = fetch_daily_history(code, source=source, lookback_days=lookback_days,
+                                retries=0, cache_dir=None, cache_ttl_seconds=0)
+    return frame, source
+
+
+def recheck_daily_filters(frame, candidate):
+    """A changed source must still satisfy the original daily strategy filters."""
+    import pandas as pd
+    from src.services.screening.daily import compute_daily_features
+    from src.services.screening.filter import apply_hard_filters, _DAILY_FILTER_DEFAULTS
+    from src.services.screening.models import HardFilterConfig
+    from src.services.screening.strategy import load_all_strategies
+    filters = load_all_strategies(ROOT / "src/services/screening/strategies")["short_term_watch"].screening.hard_filters
+    daily_filters = HardFilterConfig(exclude_st=False, **{
+        key: getattr(filters, key) for key in _DAILY_FILTER_DEFAULTS})
+    features = compute_daily_features(frame.sort_values("date"))
+    if apply_hard_filters(pd.DataFrame([features]), daily_filters).empty:
+        raise HistoryValidationError("备用日K未通过原技术筛选条件，不能替代原结果")
+
+
+def verify_candidate(candidate, expected_date, fetch_history, fallback_history=None):
+    attempts = []
+    requests = [("primary", fetch_history)]
+    if fallback_history:
+        requests.extend((source, fallback_history) for source in ("tencent", "sina"))
+    for requested, fetch in requests:
+        source = requested
+        try:
+            kwargs = {"lookback_days": 120}
+            if requested != "primary":
+                kwargs["source"] = requested
+            frame, source = fetch(candidate["code"], **kwargs)
+            verified = validate_history(frame, candidate, expected_date)
+            if requested != "primary":
+                recheck_daily_filters(frame, candidate)
+            attempts.append({"source": source, "status": "passed"})
+            return verified, source, attempts
+        except HistoryValidationError as exc:
+            reason = str(exc)
+        except Exception as exc:
+            reason = f"数据获取或计算失败（{type(exc).__name__}）"
+        attempts.append({"source": source, "status": "failed", "reason": reason})
+    return None, None, attempts
+
+
+def assess(payload, expected_date, fetch_history, fallback_history=None):
     """Do not present data/LLM failures as a clean no-opportunity result."""
     issues = []
     picks = []
@@ -91,6 +145,7 @@ def assess(payload, expected_date, fetch_history):
         return {"status": "unavailable", "picks": [], "issues": issues}
 
     excluded = []
+    verification = {}
     seen = set()
     for candidate in candidates[:5]:
         code = str(candidate.get("code", ""))
@@ -112,16 +167,15 @@ def assess(payload, expected_date, fetch_history):
         if confidence is None or confidence < 0.5:
             excluded.append(f"{code}: AI置信度不足或缺失（非胜率）")
             continue
-        try:
-            frame, source = fetch_history(code, lookback_days=120)
-            verified = validate_history(frame, candidate, expected_date)
-        except Exception as exc:
-            # Only controlled validation messages go into user-visible output.
-            issues.append(f"{code}: 日K日期、价格或完整性核验失败（{type(exc).__name__}）")
+        verified, source, attempts = verify_candidate(candidate, expected_date, fetch_history, fallback_history)
+        verification[code] = attempts
+        if verified is None:
+            details = "；".join(f"{a['source']}: {a['reason']}" for a in attempts)
+            issues.append(f"{code}: {details}")
             continue
         picks.append({**candidate, "verified": verified, "history_source": source})
     status = "partial" if issues else ("ready" if picks else "empty")
-    return {"status": status, "picks": picks, "issues": issues, "excluded": excluded}
+    return {"status": status, "picks": picks, "issues": issues, "excluded": excluded, "verification": verification}
 
 
 def render_report(payload, assessment, as_of):
@@ -130,7 +184,7 @@ def render_report(payload, assessment, as_of):
     lines = [f"# A股短线选股｜{as_of.isoformat()}", "", f"**状态：{labels[status]}**", "",
              "观察周期：约2～10个交易日；这是收盘后观察名单，不是立即买入指令。",
              f"快照覆盖：{text(payload.get('snapshot_count'))}只；来源：{text(payload.get('snapshot_source'))}。",
-             "先按快照过滤，再对前30名补充日K；不代表对全市场逐只完成历史分析。", ""]
+             "先按快照过滤，分批补充日K（每批30只，最多90只）；达到候选目标或检查上限后停止，不代表全市场逐只历史分析。", ""]
     if status == "empty":
         lines.append("本次策略未留下合适候选，不为凑数量放宽条件。")
     if status == "unavailable":
@@ -151,7 +205,10 @@ def render_report(payload, assessment, as_of):
         lines.append(f"- 数据问题：{text(issue)}")
     for issue in assessment.get("excluded", []):
         lines.append(f"- 已剔除：{text(issue)}")
-    warnings = (payload.get("warnings") or []) + (payload.get("degradation") or [])
+    for code, attempts in assessment.get("verification", {}).items():
+        if len(attempts) > 1 and attempts[-1]["status"] == "passed":
+            lines.append(f"- 换源复核：{code} 经{text(attempts[-1]['source'])}核验通过；前序原因详见result.json。")
+    warnings = list(dict.fromkeys((payload.get("warnings") or []) + (payload.get("degradation") or [])))
     if warnings:
         lines.extend(["", "数据覆盖与降级记录："])
         lines.extend(f"- {text(warning, 220)}" for warning in warnings[:10])
@@ -159,7 +216,7 @@ def render_report(payload, assessment, as_of):
     return "\n\n".join(lines)
 
 
-def execute(*, screen, fetch_history, send, expected_date, output_dir, dry_run=False):
+def execute(*, screen, fetch_history, send, expected_date, output_dir, dry_run=False, fallback_history=None):
     output_dir.mkdir(parents=True, exist_ok=True)
     try:
         payload = screen(strategy="short_term_watch", market="cn", max_results=5)
@@ -169,7 +226,7 @@ def execute(*, screen, fetch_history, send, expected_date, output_dir, dry_run=F
         payload = {}
         assessment = {"status": "unavailable", "picks": [], "issues": ["筛选引擎执行失败，请检查Actions日志"]}
     else:
-        assessment = assess(payload, expected_date, fetch_history)
+        assessment = assess(payload, expected_date, fetch_history, fallback_history)
     report = render_report(payload, assessment, expected_date)
     (output_dir / "report.md").write_text(report, encoding="utf-8")
     (output_dir / "result.json").write_text(json.dumps(
@@ -207,7 +264,8 @@ def main(argv=None):
     notifier = NotificationService()
     result = execute(screen=service.screen, fetch_history=get_dsa_daily_history,
                      send=lambda report: notifier.send(report, route_type="report"),
-                     expected_date=as_of, output_dir=args.output_dir, dry_run=args.dry_run)
+                     expected_date=as_of, output_dir=args.output_dir, dry_run=args.dry_run,
+                     fallback_history=fetch_alternative_history)
     print(f"短线选股完成：{as_of}，退出码{result}；PushPlus接收请求不等于微信已送达")
     return result
 
